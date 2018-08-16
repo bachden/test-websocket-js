@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="utf-8">
+    <title>Test Binary Websocket Frame</title>
+
+    <script type="text/javascript" src="msgpack.min.js"></script>
+
+    <style media="screen" type="text/css">
+        body {
+            width: 600px;
+        }
+
+        body>* {
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Test Binary Websocket Frame</h1>
+    <p>
+        <input style="width: calc(100% - 70px);" type="text" id="server-endpoint" value="ws://localhost:8888/websocket" />
+        <button id="connect-btn" name="button" onclick="return toggleConnect()">Connect</button>
+    </p>
+    <p>
+        <textarea style="width: calc(100% - 8px); height: 100px" id="msg-log"></textarea>
+    </p>
+    <p>
+        <input type="checkbox" id="use-binary-frame" name="use-binary-frame" checked=true />
+        <label for="use-binary-frame">Use binary frame</label>
+        <br />
+        <input id="msg-input" type="text" style="width: calc(100% - 53px);" value="" />
+        <button id="send-btn" name="button" onclick="return send()">Send</button>
+    </p>
+
+    <script type="text/javascript">
+        var ws = null;
+
+        function toggleConnect() {
+            if (ws) {
+                ws.close();
+            } else {
+                var serverEndpoint = document.getElementById("server-endpoint").value;
+                ws = new WebSocket(serverEndpoint);
+                ws.onerror = onError;
+                ws.onopen = onConnect;
+            }
+        }
+
+        function log(prefix, content) {
+            var logArea = document.getElementById("msg-log");
+            logArea.value += (prefix ? ("[" + prefix + "] ") : "") + content + "\n";
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        function send() {
+            if (!ws) {
+                return;
+            }
+            var msgInput = document.getElementById("msg-input");
+            var data = msgInput.value.trim();
+            if (data.length > 0) {
+                var content = data;
+                if (document.getElementById("use-binary-frame").checked) {
+                    try {
+                        data = JSON.parse(data);
+                    } catch (err) {
+                        // do nothing
+                    }
+                    data = msgpack.encode(data);
+                }
+                ws.send(data);
+                msgInput.value = "";
+                log("SEND", content);
+            }
+        }
+
+        function onError(event) {
+            log("ERROR", "Connection error");
+            ws.onclose = onDisconnect;
+        }
+
+        function onConnect(event) {
+            document.getElementById("connect-btn").textContent = "close";
+            ws.onclose = onDisconnect;
+            ws.onmessage = onMessage;
+            log("CONNECTED", ws.url);
+        }
+
+        function blobToArrayBuffer(blob, callback) {
+            return new Response(blob).arrayBuffer().then(function(arrayBuffer) {
+                callback(new Uint8Array(arrayBuffer));
+            });
+        }
+
+        function onMessage(event) {
+            console.log("received event", event);
+            var received = event.data;
+            if (received instanceof Blob) {
+                blobToArrayBuffer(received, function(byteBuffer) {
+                    var resp = msgpack.decode(byteBuffer);
+                    log("RECEIVED BLOB", typeof resp == "object" ? JSON.stringify(resp) : resp);
+                });
+            } else {
+                log("RECEIVED TEXT", received);
+            }
+        }
+
+        function onDisconnect(event) {
+            log("DISCONNECTED", ws.url);
+            document.getElementById("connect-btn").textContent = "connect";
+            ws.onopen = undefined;
+            ws.onclose = undefined;
+            ws.onmessage = undefined;
+            ws = undefined;
+        }
+    </script>
+</body>
+
+</html>
